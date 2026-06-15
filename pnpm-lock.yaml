@@ -23,6 +23,9 @@ importers:
       '@slack/types':
         specifier: ^2.21.1
         version: 2.21.1
+      '@slack/web-api':
+        specifier: ^7.0.0
+        version: 7.17.0
       '@vigour/actions':
         specifier: workspace:*
         version: link:../../packages/actions

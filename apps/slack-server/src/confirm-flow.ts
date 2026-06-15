@@ -1,9 +1,11 @@
 import type { App } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
 import type { KnownBlock } from "@slack/types";
 import { randomUUID } from "node:crypto";
 import type { ConfirmationManager, PendingConfirmation } from "@vigour/confirm";
 import type { AuditSink, AuditEvent, ConfirmationResult, ExecutionStatus } from "@vigour/audit";
 import type { RiskLevel } from "@vigour/shared";
+import type { LlmProvider } from "@vigour/llm";
 import { executeAction } from "./execute.js";
 
 /** App payload stashed on each pending confirmation (carries audit context). */
@@ -93,6 +95,7 @@ export function elevatedConfirmBlocks(p: PendingConfirmation): KnownBlock[] {
 interface FlowDeps {
   manager: ConfirmationManager;
   audit: AuditSink;
+  llm: LlmProvider | null;
 }
 
 /** Build the terminal audit event for a resolved confirmation. */
@@ -130,9 +133,10 @@ function terminalEvent(
 async function runApproved(
   deps: FlowDeps,
   p: PendingConfirmation,
+  client: WebClient,
   report: (text: string) => Promise<void>,
 ): Promise<void> {
-  const result = await executeAction(p.action);
+  const result = await executeAction(p.action, { client, llm: deps.llm, userId: p.userId });
   await deps.audit.record(
     terminalEvent(
       p,
@@ -142,11 +146,11 @@ async function runApproved(
       result.errorMessage,
     ),
   );
-  await report(
+  const statusLine =
     result.status === "executed"
       ? `:white_check_mark: Done — ${p.readBack}`
-      : `:x: Failed — ${result.errorMessage ?? "unknown error"}`,
-  );
+      : `:x: Failed — ${result.errorMessage ?? "unknown error"}`;
+  await report(result.output ? `${statusLine}\n${result.output}` : statusLine);
 }
 
 /**
@@ -156,6 +160,7 @@ async function runApproved(
  */
 export function registerConfirmationFlow(app: App, deps: FlowDeps) {
   const { manager } = deps;
+  const { client } = app;
 
   // Standard confirm.
   app.action(ACTION_CONFIRM, async ({ ack, body, respond }) => {
@@ -166,7 +171,7 @@ export function registerConfirmationFlow(app: App, deps: FlowDeps) {
       await respond({ replace_original: true, text: confirmFailureText(r.status) });
       return;
     }
-    await runApproved(deps, r.pending, (text) => respond({ replace_original: true, text }));
+    await runApproved(deps, r.pending, client, (text) => respond({ replace_original: true, text }));
   });
 
   // Cancel (standard or elevated).
@@ -241,7 +246,7 @@ export function registerConfirmationFlow(app: App, deps: FlowDeps) {
 
     await ack();
     const url = ((r.pending.data ?? {}) as Partial<ConfirmContext>).responseUrl;
-    await runApproved(deps, r.pending, (text) => replaceMessage(url, text));
+    await runApproved(deps, r.pending, client, (text) => replaceMessage(url, text));
   });
 
   return {

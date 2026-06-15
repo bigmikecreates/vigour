@@ -1,0 +1,41 @@
+# Vigour — Slack App Manifest
+#
+# Setup:
+#   1. Go to https://api.slack.com/apps → "Create New App" → "From a manifest"
+#   2. Select your workspace, paste this file, and create the app
+#   3. Under "Basic Information" copy the Signing Secret → SLACK_SIGNING_SECRET
+#   4. Under "OAuth & Permissions" → "Install to Workspace" → copy Bot Token → SLACK_BOT_TOKEN
+#   5. Under "Socket Mode" → enable, generate an App-Level Token with connections:write → SLACK_APP_TOKEN
+#   6. Add the bot to any channels you want it to read (invite @Vigour)
+
+display_information:
+  name: Vigour
+  description: Voice-first visual Slack agent — natural language to Slack actions
+  background_color: "#1a1a2e"
+
+features:
+  bot_user:
+    display_name: Vigour
+    always_online: true
+  slash_commands:
+    - command: /vigour
+      description: Control Slack with natural language
+      usage_hint: "[what you'd like to do]"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - channels:history    # read public channel messages
+      - channels:read       # list channels the bot is in
+      - groups:history      # read private channel messages
+      - groups:read         # list private channels
+      - chat:write          # send and broadcast messages
+      - commands            # receive slash commands
+
+settings:
+  interactivity:
+    is_enabled: true        # required for Block Kit buttons and modals
+  org_deploy_enabled: false
+  socket_mode_enabled: true # no public URL needed; uses app-level token
+  token_rotation_enabled: false

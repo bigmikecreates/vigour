@@ -43,7 +43,7 @@ const app = new App({
   socketMode: true,
 });
 
-const flow = registerConfirmationFlow(app, { manager: confirmations, audit });
+const flow = registerConfirmationFlow(app, { manager: confirmations, audit, llm });
 
 interface ParseOutcome {
   action: SlackAction;
@@ -131,7 +131,11 @@ app.command("/vigour", async ({ command, ack, respond }) => {
       await respond(`*Vigour* won't do that: ${decision.reason}`);
       return;
     }
-    const result = await executeAction(outcome.action);
+    const result = await executeAction(outcome.action, {
+      client: app.client,
+      llm,
+      userId: command.user_id,
+    });
     await audit.record(
       baseEvent(sessionId, command.user_id, transcript, outcome, decision.risk, {
         executionStatus: result.status,
@@ -139,14 +143,14 @@ app.command("/vigour", async ({ command, ack, respond }) => {
         errorMessage: result.errorMessage,
       }),
     );
-    await respond(
-      [
-        "*Vigour*",
-        "> " + transcript,
-        "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (executed)",
-        "• mind: `" + outcome.provider + "/" + outcome.model + "` · est cost: `" + fmtCost(outcome.costUsd) + "`",
-      ].join("\n"),
-    );
+    const lines = [
+      "*Vigour*",
+      "> " + transcript,
+      "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (executed)",
+      "• mind: `" + outcome.provider + "/" + outcome.model + "` · est cost: `" + fmtCost(outcome.costUsd) + "`",
+    ];
+    if (result.output) lines.push("", result.output);
+    await respond(lines.join("\n"));
     return;
   }
 

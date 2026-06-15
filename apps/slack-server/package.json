@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@slack/bolt": "^4.1.0",
+    "@slack/web-api": "^7.0.0",
     "@vigour/actions": "workspace:*",
     "@vigour/audit": "workspace:*",
     "@vigour/policy": "workspace:*",
