@@ -130,15 +130,13 @@ app.command("/vigour", async ({ command, ack, respond }) => {
 
   const hasUserToken = userClients.has(command.user_id);
   const userName = await resolveUserName(command.user_id, userClients.get(command.user_id));
-  console.log(
-    `[vigour] command from ${userName} (${command.user_id}) in #${command.channel_name} — ` +
-    `user token: ${hasUserToken ? "✓ connected" : "✗ not connected (run /vigour connect)"}`,
-  );
+  vlog("COMMAND", `${userName} (${command.user_id}) · #${command.channel_name} · token ${hasUserToken ? "✓" : "✗ (run /vigour connect)"}`);
 
-  await respond({ text: "⏳ Processing…", response_type: "ephemeral" });
+  const rawText = command.text?.trim() || "summarize my unread slack";
+  const sentAt = new Date().toLocaleTimeString("en-GB");
+  await respond({ text: `⏳ *${rawText}* · ${sentAt}`, response_type: "ephemeral" });
 
   const sessionId = randomUUID();
-  const rawText = command.text?.trim() || "summarize my unread slack";
   // Prepend channel context so the LLM knows what "this channel" refers to.
   const transcript =
     `[Context: current Slack channel ID=${command.channel_id}, channel name=#${command.channel_name}]\n` +
@@ -197,10 +195,9 @@ app.command("/vigour", async ({ command, ack, respond }) => {
         errorMessage: result.errorMessage,
       }),
     );
+    vlog("INTENT", `${outcome.action.type} → ${decision.outcome} (${result.status})`);
     const lines = [
       "*Vigour*",
-      "> " + rawText,
-      "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (" + result.status + ")",
       "• mind: `" + outcome.provider + "/" + outcome.model + "` · est cost: `" + fmtCost(outcome.costUsd) + "`",
     ];
     if (result.output) lines.push("", result.output);
@@ -209,7 +206,8 @@ app.command("/vigour", async ({ command, ack, respond }) => {
       lines.push("", "_Tip: `/vigour connect` gives Vigour access to your channels and unread messages._");
     }
     if (result.status === "executed") {
-      await respond({ text: "✅ Done", replace_original: true });
+      const doneAt = new Date().toLocaleTimeString("en-GB");
+      await respond({ text: `✅ ${doneAt}`, replace_original: true });
       await new Promise((r) => setTimeout(r, 1000));
     }
     await respond({ text: lines.join("\n"), replace_original: true });
@@ -284,7 +282,8 @@ const oauthServer = http.createServer(async (req, res) => {
         await saveToken(userId, entry, tokenStore);
         tokenStore[userId] = entry;
         const oauthName = await resolveUserName(userId, uc);
-        console.log(`[vigour] ${oauthName} (${userId}) connected via OAuth. Token expires in 3 h.`);
+        const expiresAt = new Date(entry.expiresAt).toLocaleTimeString("en-GB");
+        vlog("CONNECT", `${oauthName} (${userId}) · expires ${expiresAt}`);
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h2>Connected!</h2><p>You can close this tab and return to Slack.</p>");
       } else {
@@ -349,7 +348,13 @@ start().catch((err) => {
   process.exit(1);
 });
 
-// ── audit helpers ────────────────────────────────────────────────────────
+// ── log helpers ───────────────────────────────────────────────────────────────
+function vlog(category: string, message: string): void {
+  const ts = new Date().toLocaleTimeString("en-GB");
+  console.log(`[vigour] ${ts}  ${category.padEnd(9)} ${message}`);
+}
+
+// ── audit helpers ─────────────────────────────────────────────────────────────
 function fmtCost(costUsd: number | null): string {
   return costUsd === null ? "unknown" : `$${costUsd.toFixed(6)}`;
 }

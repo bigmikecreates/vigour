@@ -129,7 +129,7 @@ async function summarizeUnread(
 
   const resp = await llm.complete({
     system:
-      "You are Vigour, a Slack assistant. Summarise the messages below in 3–5 bullet points. Focus on decisions, action items, and anything urgent. Be concise.",
+      "You are Vigour, a Slack assistant. Give a concise, natural summary of the messages below. Write as you would to a colleague — conversational, no rigid format. Surface what matters: decisions, blockers, action items.",
     messages: [{ role: "user", content: texts.slice(0, 80).join("\n") }],
     maxTokens: 400,
   });
