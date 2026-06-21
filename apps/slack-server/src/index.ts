@@ -266,28 +266,28 @@ async function start(): Promise<void> {
 }
 
 async function startupChecks(): Promise<void> {
-  console.log("\n── startup checks ──────────────────────────────────");
+  console.log("\n─── Vigour Startup Checks ───────────────────────────");
 
   // Bot token / workspace
   try {
     const auth = await app.client.auth.test();
-    console.log(`  bot token   ✓  @${auth.user} on ${auth.team} (${auth.url})`);
+    console.log(`  Bot Token    ✓  @${auth.user} on ${auth.team} (${auth.url})`);
   } catch (err) {
-    console.error(`  bot token   ✗  ${(err as Error).message}`);
+    console.error(`  Bot Token    ✗  ${(err as Error).message}`);
   }
 
   // LLM
   if (llm) {
-    console.log(`  LLM         ✓  ${llm.name} / ${llm.model}`);
+    console.log(`  LLM          ✓  ${llm.name} / ${llm.model}`);
   } else {
-    console.warn("  LLM         ✗  no provider configured — set VIGOUR_LLM_PROVIDER in .env");
+    console.warn("  LLM          ✗  No provider configured — set VIGOUR_LLM_PROVIDER in .env");
   }
 
   // OAuth (user tokens are runtime-only — remind the dev)
-  console.log(`  user tokens ℹ  none at startup — users connect via /vigour connect`);
-  console.log(`  OAuth URL      http://localhost:${env.PORT}/slack/oauth/start`);
+  console.log(`  User Tokens  ℹ  Populated at runtime via /vigour connect`);
+  console.log(`  OAuth URL       http://localhost:${env.PORT}/slack/oauth/start`);
 
-  console.log("────────────────────────────────────────────────────\n");
+  console.log("─────────────────────────────────────────────────────\n");
 }
 
 start().catch((err) => {
