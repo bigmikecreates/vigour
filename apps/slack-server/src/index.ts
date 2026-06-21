@@ -99,6 +99,12 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     return;
   }
 
+  const hasUserToken = userClients.has(command.user_id);
+  console.log(
+    `[vigour] command from ${command.user_id} in #${command.channel_name} — ` +
+    `user token: ${hasUserToken ? "✓ connected" : "✗ not connected (run /vigour connect)"}`,
+  );
+
   const sessionId = randomUUID();
   const rawText = command.text?.trim() || "summarize my unread slack";
   // Prepend channel context so the LLM knows what "this channel" refers to.
