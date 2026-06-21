@@ -1,4 +1,4 @@
-import type { SlackAction } from "@vigour/actions";
+import type { VigourAction } from "@vigour/actions";
 import type { PolicyOutcome } from "@vigour/policy";
 import type { ConfirmationLevel } from "./types.js";
 
@@ -16,7 +16,7 @@ export function levelForOutcome(outcome: PolicyOutcome): ConfirmationLevel | nul
 }
 
 /** A natural-language "about to do X" line for read-back before acting. */
-export function renderReadBack(action: SlackAction): string {
+export function renderReadBack(action: VigourAction): string {
   switch (action.type) {
     case "summarize_unread":
       return action.channelId
@@ -35,6 +35,16 @@ export function renderReadBack(action: SlackAction): string {
         `Broadcast to ${action.channelIds.length} channel(s) ` +
         `(${action.channelIds.map((c) => `<#${c}>`).join(", ")}): "${action.text}".`
       );
+    case "query_system":
+      return `Query system: ${action.query}.`;
+    case "read_file":
+      return `Read file: ${action.path}.`;
+    case "list_directory":
+      return `List directory: ${action.path}.`;
+    case "search_files":
+      return `Search for "${action.pattern}" in ${action.directory}.`;
+    case "unrecognized":
+      return `That request isn't something I can do yet.`;
     default: {
       const _exhaustive: never = action;
       return String(_exhaustive);

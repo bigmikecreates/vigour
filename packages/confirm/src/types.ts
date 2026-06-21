@@ -1,4 +1,4 @@
-import type { SlackAction } from "@vigour/actions";
+import type { VigourAction } from "@vigour/actions";
 
 /** standard = single yes/no; elevated = yes/no + typed challenge phrase. */
 export type ConfirmationLevel = "standard" | "elevated";
@@ -7,7 +7,7 @@ export interface PendingConfirmation {
   id: string;
   sessionId: string;
   userId: string;
-  action: SlackAction;
+  action: VigourAction;
   level: ConfirmationLevel;
   /** Human-readable "I'm about to..." line read back to the user. */
   readBack: string;
@@ -22,7 +22,7 @@ export interface PendingConfirmation {
 export interface ConfirmationRequestInput {
   sessionId: string;
   userId: string;
-  action: SlackAction;
+  action: VigourAction;
   level: ConfirmationLevel;
   /** Override the auto-generated read-back if desired. */
   readBack?: string;

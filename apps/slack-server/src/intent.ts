@@ -1,10 +1,10 @@
-import { parseAction, type SlackAction } from "@vigour/actions";
+import { parseAction, type VigourAction } from "@vigour/actions";
 
 /**
  * Zero-cost, no-LLM fallback used when VIGOUR_LLM_PROVIDER is unset. Lets the
  * server run offline. Real parsing happens in @vigour/intent (see index.ts).
  */
-export function heuristicIntent(transcript: string): SlackAction {
+export function heuristicIntent(transcript: string): VigourAction {
   const s = transcript.toLowerCase();
   if (s.includes("mention")) return parseAction({ type: "read_mentions" });
   if (s.includes("broadcast") || s.includes("everyone") || s.includes("all channels"))
@@ -22,5 +22,5 @@ export function heuristicIntent(transcript: string): SlackAction {
       threadTs: "0",
       text: transcript,
     });
-  return parseAction({ type: "summarize_unread" });
+  return parseAction({ type: "unrecognized", originalQuery: transcript });
 }

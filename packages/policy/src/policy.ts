@@ -1,4 +1,4 @@
-import { getActionMetadata, type SlackAction } from "@vigour/actions";
+import { getActionMetadata, type VigourAction } from "@vigour/actions";
 import type { RiskLevel } from "@vigour/shared";
 
 /**
@@ -29,7 +29,7 @@ export interface PolicyContext {
  * destructive/broad-scope actions need stronger validation. Permission
  * (scope) checks always run first.
  */
-export function evaluate(action: SlackAction, ctx: PolicyContext): PolicyDecision {
+export function evaluate(action: VigourAction, ctx: PolicyContext): PolicyDecision {
   const meta = getActionMetadata(action.type);
 
   const missing = meta.scopes.filter((s) => !ctx.grantedScopes.includes(s));

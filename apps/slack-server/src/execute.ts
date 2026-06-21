@@ -1,6 +1,8 @@
+import { readFile as fsReadFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { WebClient } from "@slack/web-api";
 import type { LlmProvider } from "@vigour/llm";
-import type { SlackAction } from "@vigour/actions";
+import type { VigourAction } from "@vigour/actions";
 
 export interface ExecuteContext {
   client: WebClient;
@@ -22,7 +24,7 @@ const CHANNEL_SCAN_LIMIT = 8;
 const MENTION_SCAN_LIMIT = 100;
 
 export async function executeAction(
-  action: SlackAction,
+  action: VigourAction,
   ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
   try {
@@ -32,6 +34,10 @@ export async function executeAction(
       case "draft_reply":       return await draftReply(action, ctx);
       case "send_message":      return await sendMessage(action, ctx);
       case "broadcast_message": return await broadcastMessage(action, ctx);
+      case "query_system":      return querySystem(action.query);
+      case "read_file":         return await readFileAction(action.path);
+      case "list_directory":    return await listDirectory(action.path);
+      case "search_files":      return await searchFiles(action.directory, action.pattern);
       case "unrecognized":      return unrecognized(action);
       default: {
         const _x: never = action;
@@ -171,7 +177,7 @@ async function readMentions(
 }
 
 async function draftReply(
-  action: Extract<SlackAction, { type: "draft_reply" }>,
+  action: Extract<VigourAction, { type: "draft_reply" }>,
   ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
   const reader = ctx.userClient ?? ctx.client;
@@ -205,7 +211,7 @@ async function draftReply(
 }
 
 async function sendMessage(
-  action: Extract<SlackAction, { type: "send_message" }>,
+  action: Extract<VigourAction, { type: "send_message" }>,
   ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
   const poster = ctx.userClient ?? ctx.client;
@@ -217,7 +223,7 @@ async function sendMessage(
 }
 
 async function broadcastMessage(
-  action: Extract<SlackAction, { type: "broadcast_message" }>,
+  action: Extract<VigourAction, { type: "broadcast_message" }>,
   ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
   const poster = ctx.userClient ?? ctx.client;
@@ -248,11 +254,64 @@ async function broadcastMessage(
 }
 
 async function unrecognized(
-  action: Extract<SlackAction, { type: "unrecognized" }>,
+  action: Extract<VigourAction, { type: "unrecognized" }>,
 ): Promise<ExecutionResult> {
   return {
     status: "executed",
-    output: `I can't do that yet, sorry. Vigour currently handles: summarising unread messages, reading your @-mentions, drafting replies, sending messages, and broadcasting to channels.`,
+    output: `I can't do that yet, sorry. Vigour currently handles: Slack messages & mentions, file reading, directory listing, file search, and system queries (time, date).`,
+  };
+}
+
+// ── System handlers ───────────────────────────────────────────────────────────
+
+function querySystem(query: string): ExecutionResult {
+  const now = new Date();
+  const q = query.toLowerCase();
+  let output: string;
+  if (q.includes("time")) {
+    output = `Current time: ${now.toLocaleTimeString("en-GB")}`;
+  } else if (q.includes("date")) {
+    output = `Today's date: ${now.toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
+  } else {
+    output = now.toLocaleString("en-GB");
+  }
+  return { status: "executed", output };
+}
+
+// ── Filesystem handlers ───────────────────────────────────────────────────────
+
+function safePathCheck(p: string): ExecutionResult | null {
+  if (p.includes("..")) {
+    return { status: "failed", errorMessage: "Path traversal not allowed." };
+  }
+  return null;
+}
+
+async function readFileAction(filePath: string): Promise<ExecutionResult> {
+  const guard = safePathCheck(filePath);
+  if (guard) return guard;
+  const content = await fsReadFile(filePath, "utf-8");
+  const preview = content.length > 2000 ? content.slice(0, 2000) + "\n… (truncated)" : content;
+  return { status: "executed", output: "```\n" + preview + "\n```" };
+}
+
+async function listDirectory(dirPath: string): Promise<ExecutionResult> {
+  const guard = safePathCheck(dirPath);
+  if (guard) return guard;
+  const entries = await readdir(dirPath, { withFileTypes: true });
+  const lines = entries.map((e) => (e.isDirectory() ? `📁 ${e.name}/` : `📄 ${e.name}`));
+  return { status: "executed", output: lines.join("\n") || "Empty directory." };
+}
+
+async function searchFiles(directory: string, pattern: string): Promise<ExecutionResult> {
+  const guard = safePathCheck(directory);
+  if (guard) return guard;
+  const regex = new RegExp(pattern.replace(/\*/g, ".*").replace(/\?/g, "."), "i");
+  const entries = await readdir(directory, { withFileTypes: true });
+  const matches = entries.filter((e) => regex.test(e.name)).map((e) => join(directory, e.name));
+  return {
+    status: "executed",
+    output: matches.length ? matches.join("\n") : `No files matching "${pattern}" in ${directory}.`,
   };
 }
 

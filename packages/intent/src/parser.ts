@@ -1,9 +1,9 @@
-import { safeParseAction, type SlackAction } from "@vigour/actions";
+import { safeParseAction, type VigourAction } from "@vigour/actions";
 import { estimateCost, type LlmProvider, type LlmUsage } from "@vigour/llm";
 import { buildSystemPrompt } from "./prompt.js";
 
 export interface IntentResult {
-  action: SlackAction;
+  action: VigourAction;
   provider: string;
   model: string;
   usage: LlmUsage;

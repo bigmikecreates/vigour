@@ -6,7 +6,7 @@ import { WebClient } from "@slack/web-api";
 import { evaluate, type PolicyContext } from "@vigour/policy";
 import { ConsoleAuditSink, type AuditEvent } from "@vigour/audit";
 import { parseIntent, IntentParseError } from "@vigour/intent";
-import type { SlackAction } from "@vigour/actions";
+import type { VigourAction } from "@vigour/actions";
 import {
   ConfirmationManager,
   InMemoryConfirmationStore,
@@ -51,7 +51,7 @@ const app = new App({
 const flow = registerConfirmationFlow(app, { manager: confirmations, audit, llm, userClients });
 
 interface ParseOutcome {
-  action: SlackAction;
+  action: VigourAction;
   provider: string;
   model: string;
   tokensIn: number;

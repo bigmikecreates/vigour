@@ -1,5 +1,5 @@
 import type { RiskLevel, SessionId, UserId, EventId } from "@vigour/shared";
-import type { SlackActionType } from "@vigour/actions";
+import type { VigourActionType } from "@vigour/actions";
 
 export type ExecutionStatus = "pending" | "executed" | "skipped" | "failed";
 export type ConfirmationResult = "not_required" | "approved" | "rejected" | "timed_out";
@@ -12,7 +12,7 @@ export interface AuditEvent {
   timestamp: string; // ISO 8601
   inputTranscript: string;
   parsedIntent: string;
-  actionType: SlackActionType | "unknown";
+  actionType: VigourActionType | "unknown";
   riskLevel: RiskLevel;
   confirmationRequired: boolean;
   confirmationResult: ConfirmationResult;
