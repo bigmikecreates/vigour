@@ -22,6 +22,7 @@ import {
   elevatedConfirmBlocks,
   type ConfirmContext,
 } from "./confirm-flow.js";
+import { loadTokens, saveToken, TOKEN_TTL_MS, type TokenFile } from "./token-store.js";
 
 const { App } = bolt;
 
@@ -32,9 +33,19 @@ const confirmations = new ConfirmationManager(new InMemoryConfirmationStore(), {
   ttlMs: 120_000,
 });
 
-// Keyed by Slack userId — populated after the user completes /vigour connect.
+// Scopes requested during the user OAuth flow — stored alongside each token.
+const OAUTH_USER_SCOPES = [
+  "channels:history", "channels:read",
+  "groups:history", "groups:read",
+  "im:history", "mpim:history",
+  "chat:write", "users:read",
+];
+
+// Keyed by Slack userId — populated at startup (restored) and on /vigour connect.
 const userClients = new Map<string, WebClient>();
+const userScopes = new Map<string, string[]>();
 const userNames = new Map<string, string>();
+let tokenStore: TokenFile = {};
 
 async function resolveUserName(userId: string, client?: WebClient): Promise<string> {
   if (userNames.has(userId)) return userNames.get(userId)!;
@@ -143,10 +154,9 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     return;
   }
 
-  // Elevation is enabled for the demo so critical actions reach the elevated
-  // flow rather than being flat-denied. Gate this per workspace/user in prod.
+  // Use the user's real granted scopes when available; fall back to bot-level.
   const ctx: PolicyContext = {
-    grantedScopes: ["channels:history", "groups:history", "chat:write"],
+    grantedScopes: userScopes.get(command.user_id) ?? ["channels:history", "groups:history", "chat:write"],
     elevated: true,
   };
   const decision = evaluate(outcome.action, ctx);
@@ -269,8 +279,12 @@ const oauthServer = http.createServer(async (req, res) => {
       if (userId && accessToken) {
         const uc = new WebClient(accessToken);
         userClients.set(userId, uc);
+        userScopes.set(userId, OAUTH_USER_SCOPES);
+        const entry = { accessToken, grantedScopes: OAUTH_USER_SCOPES, expiresAt: Date.now() + TOKEN_TTL_MS };
+        await saveToken(userId, entry, tokenStore);
+        tokenStore[userId] = entry;
         const oauthName = await resolveUserName(userId, uc);
-        console.log(`[vigour] ${oauthName} (${userId}) connected via OAuth.`);
+        console.log(`[vigour] ${oauthName} (${userId}) connected via OAuth. Token expires in 3 h.`);
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h2>Connected!</h2><p>You can close this tab and return to Slack.</p>");
       } else {
@@ -287,6 +301,13 @@ const oauthServer = http.createServer(async (req, res) => {
 });
 
 async function start(): Promise<void> {
+  // Restore persisted user tokens before the app starts handling events.
+  tokenStore = await loadTokens();
+  for (const [uid, entry] of Object.entries(tokenStore)) {
+    userClients.set(uid, new WebClient(entry.accessToken));
+    userScopes.set(uid, entry.grantedScopes);
+  }
+
   await app.start();
   oauthServer.listen(env.PORT);
   console.log("Vigour slack-server running (Socket Mode) on :" + env.PORT);
@@ -311,8 +332,13 @@ async function startupChecks(): Promise<void> {
     console.warn("  LLM          ✗  No provider configured — set VIGOUR_LLM_PROVIDER in .env");
   }
 
-  // OAuth (user tokens are runtime-only — remind the dev)
-  console.log(`  User Tokens  ℹ  Populated at runtime via /vigour connect`);
+  // User tokens
+  const restored = userClients.size;
+  if (restored > 0) {
+    console.log(`  User Tokens  ✓  ${restored} token(s) restored from .tokens.local.json`);
+  } else {
+    console.log(`  User Tokens  ℹ  None — users connect via /vigour connect`);
+  }
   console.log(`  OAuth URL       http://localhost:${env.PORT}/slack/oauth/start`);
 
   console.log("─────────────────────────────────────────────────────\n");
