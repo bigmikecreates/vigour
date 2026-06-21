@@ -32,6 +32,22 @@ export function buildLlmProvider(): LlmProvider | null {
     if (id && isProviderId(id)) ids.push(id);
   }
 
-  const providers = ids.map(createProvider);
+  const providers: LlmProvider[] = [];
+  for (const id of ids) {
+    try {
+      providers.push(createProvider(id));
+    } catch (err) {
+      console.warn(`[vigour] ${id} unavailable — ${(err as Error).message}`);
+    }
+  }
+
+  if (providers.length === 0) {
+    console.log(
+      "[vigour] No LLM provider configured. Falling back to heuristic intent parsing.\n" +
+        "  Set VIGOUR_LLM_PROVIDER in your .env or run `ollama serve` for free local AI.",
+    );
+    return null;
+  }
+
   return providers.length === 1 ? providers[0]! : new CascadeProvider(providers);
 }
