@@ -47,7 +47,10 @@ export async function executeAction(
   } catch (err) {
     let errorMessage = err instanceof Error ? err.message : String(err);
     const data = (err as any)?.data;
-    if (data?.needed) {
+    if (data?.error === "not_in_channel") {
+      errorMessage =
+        "Bot is not a member of that channel. Either invite the bot with `/invite @Vigour`, or run `/vigour connect` so Vigour can post as you.";
+    } else if (data?.needed) {
       errorMessage += ` — needed scope: "${data.needed}", provided: "${data.provided ?? "unknown"}"`;
     }
     return { status: "failed", errorMessage };
