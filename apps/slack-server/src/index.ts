@@ -34,6 +34,22 @@ const confirmations = new ConfirmationManager(new InMemoryConfirmationStore(), {
 
 // Keyed by Slack userId — populated after the user completes /vigour connect.
 const userClients = new Map<string, WebClient>();
+const userNames = new Map<string, string>();
+
+async function resolveUserName(userId: string): Promise<string> {
+  if (userNames.has(userId)) return userNames.get(userId)!;
+  try {
+    const info = await app.client.users.info({ user: userId });
+    const name =
+      (info.user as any)?.profile?.display_name ||
+      (info.user as any)?.real_name ||
+      userId;
+    userNames.set(userId, name);
+    return name;
+  } catch {
+    return userId;
+  }
+}
 
 console.log(
   llm
@@ -100,10 +116,13 @@ app.command("/vigour", async ({ command, ack, respond }) => {
   }
 
   const hasUserToken = userClients.has(command.user_id);
+  const userName = await resolveUserName(command.user_id);
   console.log(
-    `[vigour] command from ${command.user_id} in #${command.channel_name} — ` +
+    `[vigour] command from ${userName} (${command.user_id}) in #${command.channel_name} — ` +
     `user token: ${hasUserToken ? "✓ connected" : "✗ not connected (run /vigour connect)"}`,
   );
+
+  await respond({ text: "⏳ Processing…", response_type: "ephemeral" });
 
   const sessionId = randomUUID();
   const rawText = command.text?.trim() || "summarize my unread slack";
@@ -118,7 +137,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
   } catch (err) {
     const message = err instanceof IntentParseError ? err.message : String(err);
     await audit.record(failureEvent(sessionId, command.user_id, rawText, message));
-    await respond(`*Vigour* couldn't parse that into an action.\n> ${message}`);
+    await respond({ text: `*Vigour* couldn't parse that into an action.\n> ${message}`, replace_original: true });
     return;
   }
 
@@ -150,7 +169,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
           errorMessage: decision.reason,
         }),
       );
-      await respond(`*Vigour* won't do that: ${decision.reason}`);
+      await respond({ text: `*Vigour* won't do that: ${decision.reason}`, replace_original: true });
       return;
     }
     const result = await executeAction(outcome.action, {
@@ -177,7 +196,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     if (!userClients.has(command.user_id)) {
       lines.push("", "_Tip: `/vigour connect` gives Vigour access to your channels and unread messages._");
     }
-    await respond(lines.join("\n"));
+    await respond({ text: lines.join("\n"), replace_original: true });
     return;
   }
 
@@ -195,7 +214,8 @@ app.command("/vigour", async ({ command, ack, respond }) => {
       level === "elevated"
         ? elevatedConfirmBlocks(pending)
         : standardConfirmBlocks(pending),
-    text: pending.readBack, // fallback for notifications
+    text: pending.readBack,
+    replace_original: true,
   });
 });
 
@@ -242,7 +262,8 @@ const oauthServer = http.createServer(async (req, res) => {
       const accessToken = authedUser?.access_token;
       if (userId && accessToken) {
         userClients.set(userId, new WebClient(accessToken));
-        console.log(`[vigour] User ${userId} connected via OAuth.`);
+        const oauthName = await resolveUserName(userId);
+        console.log(`[vigour] ${oauthName} (${userId}) connected via OAuth.`);
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h2>Connected!</h2><p>You can close this tab and return to Slack.</p>");
       } else {
