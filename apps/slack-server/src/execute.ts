@@ -4,6 +4,7 @@ import type { SlackAction } from "@vigour/actions";
 
 export interface ExecuteContext {
   client: WebClient;
+  userClient: WebClient | null; // user token — for reads + attributed writes
   llm: LlmProvider | null;
   userId: string;
 }
@@ -31,13 +32,19 @@ export async function executeAction(
       case "draft_reply":       return await draftReply(action, ctx);
       case "send_message":      return await sendMessage(action, ctx);
       case "broadcast_message": return await broadcastMessage(action, ctx);
+      case "unrecognized":      return unrecognized(action);
       default: {
         const _x: never = action;
         return { status: "failed", errorMessage: `unknown action ${String(_x)}` };
       }
     }
   } catch (err) {
-    return { status: "failed", errorMessage: err instanceof Error ? err.message : String(err) };
+    let errorMessage = err instanceof Error ? err.message : String(err);
+    const data = (err as any)?.data;
+    if (data?.needed) {
+      errorMessage += ` — needed scope: "${data.needed}", provided: "${data.provided ?? "unknown"}"`;
+    }
+    return { status: "failed", errorMessage };
   }
 }
 
@@ -45,18 +52,20 @@ export async function executeAction(
 
 async function summarizeUnread(
   channelId: string | undefined,
-  { client, llm }: ExecuteContext,
+  ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
+  const reader = ctx.userClient ?? ctx.client;
+  const { llm } = ctx;
   let texts: string[];
   let target: string;
 
   if (channelId) {
-    const r = await client.conversations.history({ channel: channelId, limit: HISTORY_LIMIT });
+    const r = await reader.conversations.history({ channel: channelId, limit: HISTORY_LIMIT });
     texts = extractTexts(r.messages);
     target = channelId;
   } else {
-    // No channel specified — scan the bot's joined channels.
-    const list = await client.conversations.list({
+    // No channel specified — scan the user's (or bot's) joined channels.
+    const list = await reader.conversations.list({
       types: "public_channel,private_channel",
       limit: CHANNEL_SCAN_LIMIT,
       exclude_archived: true,
@@ -65,7 +74,7 @@ async function summarizeUnread(
     const nested = await Promise.all(
       channels.map(async (ch) => {
         if (!ch.id) return [];
-        const r = await client.conversations.history({ channel: ch.id, limit: 20 });
+        const r = await reader.conversations.history({ channel: ch.id, limit: 20 });
         return extractTexts(r.messages);
       }),
     );
@@ -97,15 +106,17 @@ async function summarizeUnread(
 
 async function readMentions(
   since: string | undefined,
-  { client, userId }: ExecuteContext,
+  ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
+  const reader = ctx.userClient ?? ctx.client;
+  const { userId } = ctx;
   const mentionTag = `<@${userId}>`;
   // Default window: last 24 hours.
   const oldestTs = since
     ? String(new Date(since).getTime() / 1000)
     : String((Date.now() - 86_400_000) / 1000);
 
-  const list = await client.conversations.list({
+  const list = await reader.conversations.list({
     types: "public_channel,private_channel",
     limit: CHANNEL_SCAN_LIMIT,
     exclude_archived: true,
@@ -114,7 +125,7 @@ async function readMentions(
   const mentions: string[] = [];
   for (const ch of list.channels ?? []) {
     if (!ch.id) continue;
-    const r = await client.conversations.history({
+    const r = await reader.conversations.history({
       channel: ch.id,
       oldest: oldestTs,
       limit: MENTION_SCAN_LIMIT,
@@ -137,9 +148,11 @@ async function readMentions(
 
 async function draftReply(
   action: Extract<SlackAction, { type: "draft_reply" }>,
-  { client, llm }: ExecuteContext,
+  ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
-  const thread = await client.conversations.replies({
+  const reader = ctx.userClient ?? ctx.client;
+  const { llm } = ctx;
+  const thread = await reader.conversations.replies({
     channel: action.channelId,
     ts: action.threadTs,
     limit: 20,
@@ -148,11 +161,8 @@ async function draftReply(
   const threadText = extractTexts(thread.messages).join("\n");
 
   if (!llm) {
-    return {
-      status: "executed",
-      target: action.channelId,
-      output: `Draft (no LLM): ${action.text}`,
-    };
+    const draft = ctx.userClient ? `${action.text}\n_— Vigour_` : action.text;
+    return { status: "executed", target: action.channelId, output: `Draft (no LLM): ${draft}` };
   }
 
   const resp = await llm.complete({
@@ -164,14 +174,19 @@ async function draftReply(
     maxTokens: 300,
   });
 
-  return { status: "executed", target: action.channelId, output: `Draft:\n${resp.text.trim()}` };
+  const draftText = ctx.userClient
+    ? `${resp.text.trim()}\n_— Vigour_`
+    : resp.text.trim();
+  return { status: "executed", target: action.channelId, output: `Draft:\n${draftText}` };
 }
 
 async function sendMessage(
   action: Extract<SlackAction, { type: "send_message" }>,
-  { client }: ExecuteContext,
+  ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
-  const r = await client.chat.postMessage({ channel: action.channelId, text: action.text });
+  const poster = ctx.userClient ?? ctx.client;
+  const text = ctx.userClient ? `${action.text}\n_— Vigour_` : action.text;
+  const r = await poster.chat.postMessage({ channel: action.channelId, text });
   return r.ok
     ? { status: "executed", target: action.channelId }
     : { status: "failed", target: action.channelId, errorMessage: String(r.error) };
@@ -179,10 +194,12 @@ async function sendMessage(
 
 async function broadcastMessage(
   action: Extract<SlackAction, { type: "broadcast_message" }>,
-  { client }: ExecuteContext,
+  ctx: ExecuteContext,
 ): Promise<ExecutionResult> {
+  const poster = ctx.userClient ?? ctx.client;
+  const text = ctx.userClient ? `${action.text}\n_— Vigour_` : action.text;
   const results = await Promise.allSettled(
-    action.channelIds.map((ch) => client.chat.postMessage({ channel: ch, text: action.text })),
+    action.channelIds.map((ch) => poster.chat.postMessage({ channel: ch, text })),
   );
 
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
@@ -203,6 +220,15 @@ async function broadcastMessage(
     status: "executed",
     target: action.channelIds.join(","),
     output: `Sent to ${succeeded}/${action.channelIds.length} channel${action.channelIds.length === 1 ? "" : "s"}${note}.`,
+  };
+}
+
+async function unrecognized(
+  action: Extract<SlackAction, { type: "unrecognized" }>,
+): Promise<ExecutionResult> {
+  return {
+    status: "executed",
+    output: `I can't do that yet, sorry. Vigour currently handles: summarising unread messages, reading your @-mentions, drafting replies, sending messages, and broadcasting to channels.`,
   };
 }
 

@@ -24,14 +24,28 @@ features:
       should_escape: false
 
 oauth_config:
+  redirect_urls:
+    - http://localhost:3001/slack/oauth/callback
   scopes:
     bot:
+      - chat:write          # send and broadcast messages (as Vigour)
+      - commands            # receive slash commands
       - channels:history    # read public channel messages
-      - channels:read       # list channels the bot is in
+      - channels:read       # list channels the bot is a member of
       - groups:history      # read private channel messages
       - groups:read         # list private channels
-      - chat:write          # send and broadcast messages
-      - commands            # receive slash commands
+      - mpim:history        # read group DM messages
+      - im:history          # read direct messages
+      - search:read         # full-text search across the workspace
+    user:
+      - channels:history    # read channel messages as the user
+      - channels:read       # list channels the user is in
+      - groups:history      # read private channel messages as the user
+      - groups:read         # list private channels the user is in
+      - im:history          # read DMs as the user
+      - mpim:history        # read group DMs as the user
+      - chat:write          # post messages as the user (with Vigour attribution)
+      - users:read          # resolve user info
 
 settings:
   interactivity:
@@ -39,3 +53,4 @@ settings:
   org_deploy_enabled: false
   socket_mode_enabled: true # no public URL needed; uses app-level token
   token_rotation_enabled: false
+

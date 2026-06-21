@@ -1,6 +1,8 @@
 import "dotenv/config";
+import http from "node:http";
 import { randomUUID } from "node:crypto";
 import bolt from "@slack/bolt";
+import { WebClient } from "@slack/web-api";
 import { evaluate, type PolicyContext } from "@vigour/policy";
 import { ConsoleAuditSink, type AuditEvent } from "@vigour/audit";
 import { parseIntent, IntentParseError } from "@vigour/intent";
@@ -30,6 +32,9 @@ const confirmations = new ConfirmationManager(new InMemoryConfirmationStore(), {
   ttlMs: 120_000,
 });
 
+// Keyed by Slack userId — populated after the user completes /vigour connect.
+const userClients = new Map<string, WebClient>();
+
 console.log(
   llm
     ? `Vigour mind: ${llm.name} (${llm.model})`
@@ -43,7 +48,7 @@ const app = new App({
   socketMode: true,
 });
 
-const flow = registerConfirmationFlow(app, { manager: confirmations, audit, llm });
+const flow = registerConfirmationFlow(app, { manager: confirmations, audit, llm, userClients });
 
 interface ParseOutcome {
   action: SlackAction;
@@ -86,6 +91,13 @@ async function resolveIntent(transcript: string): Promise<ParseOutcome> {
  */
 app.command("/vigour", async ({ command, ack, respond }) => {
   await ack();
+
+  // /vigour connect — start user OAuth flow
+  if (command.text?.trim().toLowerCase() === "connect") {
+    const link = `http://localhost:${env.PORT}/slack/oauth/start?state=${command.user_id}`;
+    await respond(`*Connect your Slack account to Vigour*\n<${link}|Click here to authorise> — opens in your browser, then return to Slack.`);
+    return;
+  }
 
   const sessionId = randomUUID();
   const transcript = command.text?.trim() || "summarize my unread slack";
@@ -133,6 +145,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     }
     const result = await executeAction(outcome.action, {
       client: app.client,
+      userClient: userClients.get(command.user_id) ?? null,
       llm,
       userId: command.user_id,
     });
@@ -146,10 +159,14 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     const lines = [
       "*Vigour*",
       "> " + transcript,
-      "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (executed)",
+      "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (" + result.status + ")",
       "• mind: `" + outcome.provider + "/" + outcome.model + "` · est cost: `" + fmtCost(outcome.costUsd) + "`",
     ];
     if (result.output) lines.push("", result.output);
+    if (result.errorMessage) lines.push("", `⚠️ ${result.errorMessage}`);
+    if (!userClients.has(command.user_id)) {
+      lines.push("", "_Tip: `/vigour connect` gives Vigour access to your channels and unread messages._");
+    }
     await respond(lines.join("\n"));
     return;
   }
@@ -174,8 +191,66 @@ app.command("/vigour", async ({ command, ack, respond }) => {
 
 flow.startSweep();
 
+// ── OAuth HTTP server ─────────────────────────────────────────────────────────
+// Socket Mode uses an outbound WebSocket — it doesn't bind to PORT — so this
+// small HTTP server can occupy the port for the OAuth redirect flow.
+const oauthServer = http.createServer(async (req, res) => {
+  if (!req.url) { res.writeHead(400); res.end(); return; }
+  const url = new URL(req.url, `http://localhost:${env.PORT}`);
+
+  if (url.pathname === "/slack/oauth/start") {
+    const state = url.searchParams.get("state") ?? "";
+    const scopes = [
+      "channels:history", "channels:read",
+      "groups:history", "groups:read",
+      "im:history", "mpim:history",
+      "chat:write", "users:read",
+    ].join(",");
+    const authUrl =
+      `https://slack.com/oauth/v2/authorize` +
+      `?client_id=${encodeURIComponent(env.SLACK_CLIENT_ID)}` +
+      `&user_scope=${encodeURIComponent(scopes)}` +
+      `&redirect_uri=${encodeURIComponent(env.SLACK_OAUTH_REDIRECT_URI)}` +
+      `&state=${encodeURIComponent(state)}`;
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  if (url.pathname === "/slack/oauth/callback") {
+    const code = url.searchParams.get("code");
+    if (!code) { res.writeHead(400); res.end("Missing code"); return; }
+    try {
+      const result = await app.client.oauth.v2.access({
+        client_id: env.SLACK_CLIENT_ID,
+        client_secret: env.SLACK_CLIENT_SECRET,
+        code,
+        redirect_uri: env.SLACK_OAUTH_REDIRECT_URI,
+      });
+      const authedUser = (result as any).authed_user as { id?: string; access_token?: string } | undefined;
+      const userId = authedUser?.id;
+      const accessToken = authedUser?.access_token;
+      if (userId && accessToken) {
+        userClients.set(userId, new WebClient(accessToken));
+        console.log(`[vigour] User ${userId} connected via OAuth.`);
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end("<h2>Connected!</h2><p>You can close this tab and return to Slack.</p>");
+      } else {
+        res.writeHead(400); res.end("OAuth error: missing token in response.");
+      }
+    } catch (err) {
+      console.error("[vigour] OAuth callback error:", err);
+      res.writeHead(500); res.end("OAuth exchange failed. Check server logs.");
+    }
+    return;
+  }
+
+  res.writeHead(404); res.end();
+});
+
 async function start(): Promise<void> {
-  await app.start(env.PORT);
+  await app.start();
+  oauthServer.listen(env.PORT);
   console.log("Vigour slack-server running (Socket Mode) on :" + env.PORT);
 }
 

@@ -96,6 +96,7 @@ interface FlowDeps {
   manager: ConfirmationManager;
   audit: AuditSink;
   llm: LlmProvider | null;
+  userClients: Map<string, WebClient>;
 }
 
 /** Build the terminal audit event for a resolved confirmation. */
@@ -136,7 +137,12 @@ async function runApproved(
   client: WebClient,
   report: (text: string) => Promise<void>,
 ): Promise<void> {
-  const result = await executeAction(p.action, { client, llm: deps.llm, userId: p.userId });
+  const result = await executeAction(p.action, {
+    client,
+    userClient: deps.userClients.get(p.userId) ?? null,
+    llm: deps.llm,
+    userId: p.userId,
+  });
   await deps.audit.record(
     terminalEvent(
       p,
