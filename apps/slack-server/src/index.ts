@@ -100,14 +100,18 @@ app.command("/vigour", async ({ command, ack, respond }) => {
   }
 
   const sessionId = randomUUID();
-  const transcript = command.text?.trim() || "summarize my unread slack";
+  const rawText = command.text?.trim() || "summarize my unread slack";
+  // Prepend channel context so the LLM knows what "this channel" refers to.
+  const transcript =
+    `[Context: current Slack channel ID=${command.channel_id}, channel name=#${command.channel_name}]\n` +
+    rawText;
 
   let outcome: ParseOutcome;
   try {
     outcome = await resolveIntent(transcript);
   } catch (err) {
     const message = err instanceof IntentParseError ? err.message : String(err);
-    await audit.record(failureEvent(sessionId, command.user_id, transcript, message));
+    await audit.record(failureEvent(sessionId, command.user_id, rawText, message));
     await respond(`*Vigour* couldn't parse that into an action.\n> ${message}`);
     return;
   }
@@ -135,7 +139,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
   if (level === null) {
     if (decision.outcome === "deny") {
       await audit.record(
-        baseEvent(sessionId, command.user_id, transcript, outcome, decision.risk, {
+        baseEvent(sessionId, command.user_id, rawText, outcome, decision.risk, {
           executionStatus: "skipped",
           errorMessage: decision.reason,
         }),
@@ -150,7 +154,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
       userId: command.user_id,
     });
     await audit.record(
-      baseEvent(sessionId, command.user_id, transcript, outcome, decision.risk, {
+      baseEvent(sessionId, command.user_id, rawText, outcome, decision.risk, {
         executionStatus: result.status,
         slackTarget: result.target,
         errorMessage: result.errorMessage,
@@ -158,7 +162,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     );
     const lines = [
       "*Vigour*",
-      "> " + transcript,
+      "> " + rawText,
       "• intent: `" + outcome.action.type + "` → `" + decision.outcome + "` (" + result.status + ")",
       "• mind: `" + outcome.provider + "/" + outcome.model + "` · est cost: `" + fmtCost(outcome.costUsd) + "`",
     ];
