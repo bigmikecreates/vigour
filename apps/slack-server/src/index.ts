@@ -16,6 +16,7 @@ import { loadEnv } from "./env.js";
 import { buildLlmProvider } from "./llm.js";
 import { heuristicIntent } from "./intent.js";
 import { executeAction } from "./execute.js";
+import { startMcpServer } from "./mcp-server.js";
 import {
   registerConfirmationFlow,
   standardConfirmBlocks,
@@ -309,6 +310,11 @@ async function start(): Promise<void> {
 
   await app.start();
   oauthServer.listen(env.PORT);
+  startMcpServer(3002, {
+    client: app.client,
+    userClients,
+    llm,
+  });
   console.log("Vigour slack-server running (Socket Mode) on :" + env.PORT);
   await startupChecks();
 }
@@ -339,6 +345,7 @@ async function startupChecks(): Promise<void> {
     console.log(`  User Tokens  ℹ  None — users connect via /vigour connect`);
   }
   console.log(`  OAuth URL       http://localhost:${env.PORT}/slack/oauth/start`);
+  console.log(`  MCP Server      http://localhost:3002`);
 
   console.log("─────────────────────────────────────────────────────\n");
 }

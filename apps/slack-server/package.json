@@ -11,22 +11,23 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@slack/bolt": "^4.1.0",
+    "@slack/types": "^2.21.1",
     "@slack/web-api": "^7.0.0",
     "@vigour/actions": "workspace:*",
     "@vigour/audit": "workspace:*",
+    "@vigour/confirm": "workspace:*",
+    "@vigour/intent": "workspace:*",
+    "@vigour/llm": "workspace:*",
     "@vigour/policy": "workspace:*",
     "@vigour/shared": "workspace:*",
     "dotenv": "^16.4.5",
-    "zod": "^3.23.8",
-    "@vigour/llm": "workspace:*",
-    "@vigour/intent": "workspace:*",
-    "@vigour/confirm": "workspace:*",
-    "@slack/types": "^2.21.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^20.16.5",
     "tsx": "^4.19.1",
-    "typescript": "^5.5.4",
-    "@types/node": "^20.16.5"
+    "typescript": "^5.5.4"
   }
 }
