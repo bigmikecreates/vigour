@@ -48,6 +48,23 @@ export async function executeAction(
   }
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+async function resolveChannelId(
+  nameOrId: string,
+  client: WebClient,
+): Promise<string | null> {
+  // Slack IDs are uppercase alphanumeric starting with C/D/G/W
+  if (/^[A-Z][A-Z0-9]{6,}$/.test(nameOrId)) return nameOrId;
+
+  const name = nameOrId.replace(/^#/, "").toLowerCase();
+  const list = await client.conversations.list({
+    types: "public_channel,private_channel,mpim,im",
+    exclude_archived: true,
+  });
+  return list.channels?.find((c) => c.name?.toLowerCase() === name)?.id ?? null;
+}
+
 // ── action implementations ────────────────────────────────────────────────────
 
 async function summarizeUnread(
@@ -60,9 +77,16 @@ async function summarizeUnread(
   let target: string;
 
   if (channelId) {
-    const r = await reader.conversations.history({ channel: channelId, limit: HISTORY_LIMIT });
+    const resolvedId = await resolveChannelId(channelId, reader);
+    if (!resolvedId) {
+      return {
+        status: "failed",
+        errorMessage: `Channel "${channelId}" not found. Check the name and make sure Vigour has access.`,
+      };
+    }
+    const r = await reader.conversations.history({ channel: resolvedId, limit: HISTORY_LIMIT });
     texts = extractTexts(r.messages);
-    target = channelId;
+    target = resolvedId;
   } else {
     // No channel specified — scan the user's (or bot's) joined channels.
     const list = await reader.conversations.list({
