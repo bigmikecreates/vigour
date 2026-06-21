@@ -36,13 +36,15 @@ const confirmations = new ConfirmationManager(new InMemoryConfirmationStore(), {
 const userClients = new Map<string, WebClient>();
 const userNames = new Map<string, string>();
 
-async function resolveUserName(userId: string): Promise<string> {
+async function resolveUserName(userId: string, client?: WebClient): Promise<string> {
   if (userNames.has(userId)) return userNames.get(userId)!;
   try {
-    const info = await app.client.users.info({ user: userId });
+    const info = await (client ?? app.client).users.info({ user: userId });
     const name =
+      (info.user as any)?.profile?.display_name_normalized ||
       (info.user as any)?.profile?.display_name ||
       (info.user as any)?.real_name ||
+      (info.user as any)?.name ||
       userId;
     userNames.set(userId, name);
     return name;
@@ -116,7 +118,7 @@ app.command("/vigour", async ({ command, ack, respond }) => {
   }
 
   const hasUserToken = userClients.has(command.user_id);
-  const userName = await resolveUserName(command.user_id);
+  const userName = await resolveUserName(command.user_id, userClients.get(command.user_id));
   console.log(
     `[vigour] command from ${userName} (${command.user_id}) in #${command.channel_name} — ` +
     `user token: ${hasUserToken ? "✓ connected" : "✗ not connected (run /vigour connect)"}`,
@@ -196,6 +198,10 @@ app.command("/vigour", async ({ command, ack, respond }) => {
     if (!userClients.has(command.user_id)) {
       lines.push("", "_Tip: `/vigour connect` gives Vigour access to your channels and unread messages._");
     }
+    if (result.status === "executed") {
+      await respond({ text: "✅ Done", replace_original: true });
+      await new Promise((r) => setTimeout(r, 1000));
+    }
     await respond({ text: lines.join("\n"), replace_original: true });
     return;
   }
@@ -261,8 +267,9 @@ const oauthServer = http.createServer(async (req, res) => {
       const userId = authedUser?.id;
       const accessToken = authedUser?.access_token;
       if (userId && accessToken) {
-        userClients.set(userId, new WebClient(accessToken));
-        const oauthName = await resolveUserName(userId);
+        const uc = new WebClient(accessToken);
+        userClients.set(userId, uc);
+        const oauthName = await resolveUserName(userId, uc);
         console.log(`[vigour] ${oauthName} (${userId}) connected via OAuth.`);
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<h2>Connected!</h2><p>You can close this tab and return to Slack.</p>");
