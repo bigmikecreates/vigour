@@ -262,6 +262,32 @@ async function start(): Promise<void> {
   await app.start();
   oauthServer.listen(env.PORT);
   console.log("Vigour slack-server running (Socket Mode) on :" + env.PORT);
+  await startupChecks();
+}
+
+async function startupChecks(): Promise<void> {
+  console.log("\n── startup checks ──────────────────────────────────");
+
+  // Bot token / workspace
+  try {
+    const auth = await app.client.auth.test();
+    console.log(`  bot token   ✓  @${auth.user} on ${auth.team} (${auth.url})`);
+  } catch (err) {
+    console.error(`  bot token   ✗  ${(err as Error).message}`);
+  }
+
+  // LLM
+  if (llm) {
+    console.log(`  LLM         ✓  ${llm.name} / ${llm.model}`);
+  } else {
+    console.warn("  LLM         ✗  no provider configured — set VIGOUR_LLM_PROVIDER in .env");
+  }
+
+  // OAuth (user tokens are runtime-only — remind the dev)
+  console.log(`  user tokens ℹ  none at startup — users connect via /vigour connect`);
+  console.log(`  OAuth URL      http://localhost:${env.PORT}/slack/oauth/start`);
+
+  console.log("────────────────────────────────────────────────────\n");
 }
 
 start().catch((err) => {
