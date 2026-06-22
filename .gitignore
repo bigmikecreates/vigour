@@ -10,3 +10,9 @@ __pycache__/
 *.pyc
 .DS_Store
 .tokens.local.json
+
+# Tauri
+vigour-app/src-tauri/target/
+
+# Cortex models (large binary files downloaded at runtime)
+vigour-app/cortex/models/

@@ -216,7 +216,6 @@ export function startMcpServer(port: number, deps: McpServerDeps): http.Server {
   });
 
   server.connect(transport);
-  transport.start();
 
   const httpServer = http.createServer(async (req, res) => {
     if (req.method === "POST" || req.method === "GET") {

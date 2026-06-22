@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for Vigour overlay",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "global-shortcut:default"
+  ]
+}
