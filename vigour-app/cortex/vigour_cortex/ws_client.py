@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    import websockets as _ws
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,7 @@ class OverlayClient:
 
     def __init__(self, url: str) -> None:
         self._url = url
-        self._ws: asyncio.Task | None = None
+        self._ws: "_ws.WebSocketClientProtocol | None" = None
         self._callbacks: list[Callable[[dict], None]] = []
 
     def on_message(self, cb: Callable[[dict], None]) -> None:
@@ -27,6 +30,7 @@ class OverlayClient:
         while True:
             try:
                 async with websockets.connect(self._url) as ws:
+                    self._ws = ws
                     logger.info("Connected to overlay at %s", self._url)
                     async for raw in ws:
                         for cb in self._callbacks:
@@ -35,34 +39,34 @@ class OverlayClient:
                                 cb(msg)
                             except Exception:
                                 logger.exception("callback error")
-                logger.warning("Disconnected, reconnecting...")
+                    logger.warning("Disconnected, reconnecting...")
             except ConnectionRefusedError:
                 logger.info("Overlay not ready yet, retrying...")
             except Exception:
                 logger.exception("WebSocket error")
+            finally:
+                self._ws = None
             await asyncio.sleep(2)
 
     async def send_state(self, state: str, message: str = "") -> None:
         """Push a state_change event to the overlay."""
+        if self._ws is None:
+            return
         payload = json.dumps(
             {"type": "state_change", "payload": {"state": state, "message": message}}
         )
-        import websockets
-
         try:
-            async with websockets.connect(self._url) as ws:
-                await ws.send(payload)
+            await self._ws.send(payload)
         except Exception:
             pass  # best effort
 
     async def send_transcript(self, text: str) -> None:
+        if self._ws is None:
+            return
         payload = json.dumps(
             {"type": "transcript", "payload": {"text": text}}
         )
-        import websockets
-
         try:
-            async with websockets.connect(self._url) as ws:
-                await ws.send(payload)
+            await self._ws.send(payload)
         except Exception:
             pass

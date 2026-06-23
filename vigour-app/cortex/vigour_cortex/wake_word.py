@@ -66,7 +66,7 @@ class WakeWordDetector:
         ) as stream:
             while True:
                 block, _ = stream.read(frame_length)
-                result = porcupine.process(block)
+                result = porcupine.process(block.flatten())
                 if result >= 0:
                     logger.info("Wake word detected!")
                     return True

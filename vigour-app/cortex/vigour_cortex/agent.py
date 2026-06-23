@@ -28,29 +28,31 @@ class VoiceAgent:
         self._tts = TextToSpeech(config, self._audio_out)
         self._mcp = McpClient(config.mcp_url)
         self._overlay = OverlayClient(config.ws_url)
+        self._connect_task: asyncio.Task | None = None
 
     async def _notify(self, state: str, msg: str = "") -> None:
         await self._overlay.send_state(state, msg)
 
     async def run(self) -> None:
         """Main loop: detect wake word, transcribe, execute, respond."""
+        self._connect_task = asyncio.create_task(self._overlay.connect())
         await self._notify("idle", "Vigour ready")
 
         while True:
             # 1. Wait for wake word
             await self._notify("idle", "Waiting for wake word")
-            self._wake.wait_for_wake_word()
+            await asyncio.to_thread(self._wake.wait_for_wake_word)
 
             # 2. Listen for utterance
             await self._notify("listening", "Listening...")
-            utterance = self._audio_in.listen_for_utterance()
+            utterance = await asyncio.to_thread(self._audio_in.listen_for_utterance)
             if utterance is None:
                 continue
             await self._overlay.send_transcript("")
 
             # 3. Transcribe
             await self._notify("thinking", "Transcribing...")
-            text = self._asr.transcribe(utterance.samples, utterance.sample_rate)
+            text = await asyncio.to_thread(self._asr.transcribe, utterance.samples, utterance.sample_rate)
             if not text:
                 await self._notify("error", "No speech detected")
                 continue
@@ -66,10 +68,12 @@ class VoiceAgent:
 
             # 5. Speak response
             await self._notify("speaking", result[:120])
-            self._tts.speak(result)
+            await asyncio.to_thread(self._tts.speak, result)
 
             await self._notify("complete", "")
 
     async def shutdown(self) -> None:
+        if self._connect_task:
+            self._connect_task.cancel()
         self._wake.close()
         await self._mcp.close()

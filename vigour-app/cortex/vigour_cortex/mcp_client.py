@@ -45,4 +45,4 @@ class McpClient:
 
     async def parse_intent(self, text: str) -> str:
         """Ask vigour-core to parse a natural-language intent and execute it."""
-        return await self.call_tool("unrecognized", {"query": text})
+        return await self.call_tool("unrecognized", {"originalQuery": text})
