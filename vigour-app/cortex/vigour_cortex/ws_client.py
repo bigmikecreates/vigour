@@ -51,6 +51,7 @@ class OverlayClient:
     async def send_state(self, state: str, message: str = "") -> None:
         """Push a state_change event to the overlay."""
         if self._ws is None:
+            logger.debug("Overlay not connected; dropping state=%s", state)
             return
         payload = json.dumps(
             {"type": "state_change", "payload": {"state": state, "message": message}}
@@ -58,10 +59,11 @@ class OverlayClient:
         try:
             await self._ws.send(payload)
         except Exception:
-            pass  # best effort
+            logger.debug("send_state failed", exc_info=True)
 
     async def send_transcript(self, text: str) -> None:
         if self._ws is None:
+            logger.debug("Overlay not connected; dropping transcript")
             return
         payload = json.dumps(
             {"type": "transcript", "payload": {"text": text}}
@@ -69,4 +71,4 @@ class OverlayClient:
         try:
             await self._ws.send(payload)
         except Exception:
-            pass
+            logger.debug("send_transcript failed", exc_info=True)

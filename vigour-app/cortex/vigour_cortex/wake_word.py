@@ -1,77 +1,58 @@
-"""Wake-word detection using Porcupine."""
+"""Wake-word detection using OpenWakeWord."""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Iterator
 
-import numpy as np
-import pvporcupine
 import sounddevice as sd
+from openwakeword.model import Model
 
 from vigour_cortex.config import Config
 
 logger = logging.getLogger(__name__)
 
+# OpenWakeWord is trained at 16 kHz; both constants are coupled to this rate.
+_OWW_SAMPLE_RATE = 16_000
+FRAME_LENGTH = 1280  # 80 ms at 16 kHz
+
 
 class WakeWordDetector:
-    """Listens for a wake word and yields audio chunks for utterance capture."""
+    """Listens for a wake word and returns True on detection."""
 
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._porcupine: pvporcupine.Porcupine | None = None
-
-    def _init_porcupine(self) -> pvporcupine.Porcupine:
-        kw = self._config.porcupine_keyword
-        # Porcupine supports keyword_paths for custom .ppn files or built-in keywords
-        if kw.endswith(".ppn"):
-            return pvporcupine.create(
-                access_key=self._config.porcupine_key,
-                keyword_paths=[kw],
-                sensitivities=[self._config.porcupine_sensitivity],
-            )
-        else:
-            return pvporcupine.create(
-                access_key=self._config.porcupine_key,
-                keywords=[kw],
-                sensitivities=[self._config.porcupine_sensitivity],
-            )
+        self._model: Model | None = None
 
     @property
-    def porcupine(self) -> pvporcupine.Porcupine:
-        if self._porcupine is None:
-            self._porcupine = self._init_porcupine()
-        return self._porcupine
+    def model(self) -> Model:
+        if self._model is None:
+            self._model = Model(wakeword_models=[self._config.wake_word_model])
+        return self._model
 
     def wait_for_wake_word(self) -> bool:
-        """Blocks until the wake word is detected. Returns True on detection.
-
-        Runs audio capture in a tight loop, checking each frame against Porcupine.
-        """
-        porcupine = self.porcupine
-        sr = self._config.sample_rate
-        frame_length = porcupine.frame_length
+        """Blocks until the wake word is detected. Returns True on detection."""
+        model = self.model
+        threshold = self._config.wake_word_threshold
 
         logger.info(
-            "Waiting for wake word '%s'...",
-            self._config.porcupine_keyword,
+            "Waiting for wake word (model=%s, threshold=%.2f)...",
+            self._config.wake_word_model,
+            threshold,
         )
 
         with sd.InputStream(
-            samplerate=sr,
+            samplerate=_OWW_SAMPLE_RATE,
             channels=1,
             dtype="int16",
-            blocksize=frame_length,
+            blocksize=FRAME_LENGTH,
         ) as stream:
             while True:
-                block, _ = stream.read(frame_length)
-                result = porcupine.process(block.flatten())
-                if result >= 0:
+                block, _ = stream.read(FRAME_LENGTH)
+                scores = model.predict(block.flatten())
+                if any(v >= threshold for v in scores.values()):
                     logger.info("Wake word detected!")
+                    model.reset()
                     return True
 
     def close(self) -> None:
-        if self._porcupine is not None:
-            self._porcupine.delete()
-            self._porcupine = None
+        self._model = None

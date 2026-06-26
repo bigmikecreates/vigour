@@ -9,13 +9,12 @@ from dataclasses import dataclass, field
 @dataclass
 class Config:
     # Wake word
-    porcupine_key: str = field(
-        default_factory=lambda: os.environ.get("VIGOUR_PORCUPINE_KEY", "")
+    wake_word_model: str = field(
+        default_factory=lambda: os.environ.get("VIGOUR_WAKE_WORD_MODEL", "hey_jarvis")
     )
-    porcupine_keyword: str = field(
-        default_factory=lambda: os.environ.get("VIGOUR_WAKE_WORD", "computer")
+    wake_word_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("VIGOUR_WAKE_WORD_THRESHOLD", "0.5"))
     )
-    porcupine_sensitivity: float = float(os.environ.get("VIGOUR_SENSITIVITY", "0.5"))
 
     # ASR
     whisper_model: str = field(
@@ -31,12 +30,12 @@ class Config:
     )
 
     # TTS
-    piper_model: str = field(
-        default_factory=lambda: os.environ.get(
-            "VIGOUR_PIPER_MODEL", "en_US-lessac-medium"
-        )
+    kokoro_voice: str = field(
+        default_factory=lambda: os.environ.get("VIGOUR_KOKORO_VOICE", "af_heart")
     )
-    piper_rate: float = float(os.environ.get("VIGOUR_PIPER_RATE", "1.0"))
+    kokoro_speed: float = field(
+        default_factory=lambda: float(os.environ.get("VIGOUR_KOKORO_SPEED", "1.0"))
+    )
 
     # Audio
     sample_rate: int = int(os.environ.get("VIGOUR_SAMPLE_RATE", "16000"))

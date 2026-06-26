@@ -5,10 +5,10 @@ description = "Vigour voice agent — wake word, ASR, TTS, and face auth sidecar
 requires-python = ">=3.11"
 dependencies = [
     "faster-whisper>=1.1.0",
-    "pvporcupine>=3.0.0",
-    "piper-tts>=1.2.0",
+    "openwakeword>=0.6.0",
+    "kokoro>=0.7.0",
     "sounddevice>=0.5.1",
-    "numpy>=1.26.0",
+    "numpy>=2.0.0",
     "soundfile>=0.12.1",
     "websockets>=13.0",
     "httpx>=0.27.0",

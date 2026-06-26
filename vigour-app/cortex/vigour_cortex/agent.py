@@ -75,5 +75,9 @@ class VoiceAgent:
     async def shutdown(self) -> None:
         if self._connect_task:
             self._connect_task.cancel()
+            try:
+                await self._connect_task
+            except asyncio.CancelledError:
+                pass
         self._wake.close()
         await self._mcp.close()

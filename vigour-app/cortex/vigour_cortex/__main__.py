@@ -24,9 +24,10 @@ async def _main() -> None:
 
     try:
         await agent.run()
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
+    except asyncio.CancelledError:
+        pass
     finally:
+        logger.info("Shutting down...")
         await agent.shutdown()
 
 
